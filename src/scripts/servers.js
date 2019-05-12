@@ -41,18 +41,11 @@ const set = (serverUrl, { url, active, ...entry }) => {
 		return;
 	}
 
-	const isTitleChanging = entries[index].title !== entry.title;
-
 	entries[index] = {
 		...entries[index],
 		...entry,
 	};
 	persist();
-
-	if (isTitleChanging) {
-		events.emit('title-setted', entries[index]);
-		return;
-	}
 
 	events.emit('updated', entries[index]);
 };

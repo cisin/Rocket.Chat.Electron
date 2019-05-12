@@ -1,5 +1,7 @@
 import { remote } from 'electron';
 import i18n from '../i18n';
+import { store } from '../store';
+import { stopLoading } from '../store/loading';
 import { aboutModal } from './aboutModal';
 import { screenshareModal } from './screenshareModal';
 import { updateModal } from './updateModal';
@@ -8,6 +10,8 @@ import { preferences } from './preferences';
 import { servers } from './servers';
 import { sidebar } from './sidebar';
 import { webviews } from './webviews';
+import { loadPreferences, setPreference } from '../store/preferences';
+import { loadServers, setServerSidebarStyle } from '../store/servers';
 const { app, dialog, getCurrentWindow, shell } = remote;
 const {
 	basicAuth,
@@ -22,75 +26,7 @@ const {
 } = remote.require('./main');
 
 
-let loading = true;
-
-const updatePreferences = () => {
-	const {
-		hasTrayIcon,
-		hasMenuBar,
-		hasSidebar,
-		showWindowOnUnreadChanged,
-	} = preferences.getAll();
-
-	menus.setState({
-		showTrayIcon: hasTrayIcon,
-		showWindowOnUnreadChanged,
-		showMenuBar: hasMenuBar,
-		showServerList: hasSidebar,
-	});
-
-	tray.setState({
-		showIcon: hasTrayIcon,
-	});
-
-	dock.setState({
-		hasTrayIcon,
-	});
-
-	sidebar.setState({
-		visible: !loading && hasSidebar,
-	});
-
-	webviews.setState({
-		hasSidebar,
-	});
-
-	getCurrentWindow().hasTrayIcon = hasTrayIcon;
-};
-
-
-const updateServers = () => {
-	const allServers = servers.getAll();
-
-	menus.setState({ servers: allServers });
-	sidebar.setState({ servers: allServers });
-	touchBar.setState({ servers: allServers });
-	webviews.setState({ servers: allServers });
-
-	const badges = allServers.map(({ badge }) => badge);
-	const mentionCount = (
-		badges
-			.filter((badge) => Number.isInteger(badge))
-			.reduce((sum, count) => sum + count, 0)
-	);
-	const globalBadge = mentionCount || (badges.some((badge) => !!badge) && '•') || null;
-
-	tray.setState({ badge: globalBadge });
-	dock.setState({ badge: globalBadge });
-
-	landing.setState({ visible: !loading && !allServers.some(({ active }) => active) });
-};
-
-const updateWindowState = () => tray.setState({ isMainWindowVisible: getCurrentWindow().isVisible() });
-
-
-const stopLoading = () => {
-	loading = false;
-	document.querySelector('.loading').classList.remove('loading--visible');
-	updateServers();
-	updatePreferences();
-	updateWindowState();
-};
+let __showWindowOnUnreadChanged = false;
 
 
 const askWhenToInstallUpdate = () => new Promise((resolve) => {
@@ -200,8 +136,79 @@ const getFocusedWebContents = () => (
 	(webviews.getFocused() && webviews.getFocused().getWebContents()) || getCurrentWindow().webContents
 );
 
+const update = async () => {
+	const {
+		loading,
+		preferences: {
+			hasTray,
+			hasMenus,
+			hasSidebar,
+			showWindowOnUnreadChanged,
+		},
+		servers,
+	} = store.getState();
+
+	const badges = servers.map(({ badge }) => badge);
+	const mentionCount = (
+		badges
+			.filter((badge) => Number.isInteger(badge))
+			.reduce((sum, count) => sum + count, 0)
+	);
+	const globalBadge = mentionCount || (badges.some((badge) => !!badge) && '•') || null;
+
+	document.querySelector('.loading').classList.toggle('loading--visible', loading);
+
+	menus.setState({
+		showTrayIcon: hasTray,
+		showMenuBar: hasMenus,
+		showServerList: hasSidebar,
+		showWindowOnUnreadChanged,
+		servers,
+	});
+
+	touchBar.setState({ servers });
+
+	tray.setState({
+		showIcon: hasTray,
+		badge: globalBadge,
+		isMainWindowVisible: getCurrentWindow().isVisible(),
+	});
+
+	dock.setState({
+		hasTrayIcon: hasTray,
+		badge: globalBadge,
+	});
+
+	sidebar.setState({
+		visible: !loading && hasSidebar,
+		servers,
+	});
+
+	landing.setState({
+		visible: !loading && !servers.some(({ active }) => active),
+	});
+
+	webviews.setState({
+		hasSidebar,
+		servers,
+	});
+
+	getCurrentWindow().hasTrayIcon = hasTray;
+
+	await preferences.persist({
+		hasTray,
+		hasMenus,
+		hasSidebar,
+		showWindowOnUnreadChanged,
+	});
+
+	__showWindowOnUnreadChanged = showWindowOnUnreadChanged;
+};
+
 export default async () => {
 	await i18n.initialize();
+
+	store.subscribe(update);
 
 	window.addEventListener('beforeunload', destroyAll);
 
@@ -315,34 +322,28 @@ export default async () => {
 		}
 	});
 
-	menus.on('toggle', (property) => {
+	menus.on('toggle', (property, checked) => {
 		switch (property) {
 			case 'showTrayIcon': {
-				preferences.set('hasTrayIcon', !preferences.get('hasTrayIcon'));
+				store.dispatch(setPreference('hasTray', checked));
 				break;
 			}
 
 			case 'showMenuBar': {
-				preferences.set('hasMenuBar', !preferences.get('hasMenuBar'));
+				store.dispatch(setPreference('hasMenus', checked));
 				break;
 			}
 
 			case 'showServerList': {
-				preferences.set('hasSidebar', !preferences.get('hasSidebar'));
+				store.dispatch(setPreference('hasSidebar', checked));
 				break;
 			}
 
 			case 'showWindowOnUnreadChanged': {
-				preferences.set('showWindowOnUnreadChanged', !preferences.get('showWindowOnUnreadChanged'));
+				store.dispatch(setPreference('showWindowOnUnreadChanged', checked));
 				break;
 			}
 		}
-
-		updatePreferences();
-	});
-
-	preferences.on('set', () => {
-		updatePreferences();
 	});
 
 	screenshareModal.on('select-source', ({ id, url }) => {
@@ -354,38 +355,34 @@ export default async () => {
 	servers.on('loaded', (entries, fromDefaults) => {
 		if (fromDefaults) {
 			if (Object.keys(entries).length <= 1) {
-				preferences.set('hasSidebar', false);
+				store.dispatch(setPreference('hasSidebar', false));
 			}
 		}
-		updateServers();
+		store.dispatch(loadServers(servers.getAll()));
 	});
 
 	servers.on('added', (/* entry */) => {
-		updateServers();
+		store.dispatch(loadServers(servers.getAll()));
 	});
 
 	servers.on('removed', (/* entry */) => {
-		updateServers();
+		store.dispatch(loadServers(servers.getAll()));
 	});
 
 	servers.on('updated', (/* entry */) => {
-		updateServers();
+		store.dispatch(loadServers(servers.getAll()));
 	});
 
 	servers.on('sorted', () => {
-		updateServers();
+		store.dispatch(loadServers(servers.getAll()));
 	});
 
 	servers.on('active-setted', (/* entry */) => {
-		updateServers();
+		store.dispatch(loadServers(servers.getAll()));
 	});
 
 	servers.on('active-cleared', () => {
-		updateServers();
-	});
-
-	servers.on('title-setted', () => {
-		updateServers();
+		store.dispatch(loadServers(servers.getAll()));
 	});
 
 	sidebar.on('select-server', (serverUrl) => {
@@ -414,8 +411,8 @@ export default async () => {
 		servers.sort(urls);
 	});
 
-	getCurrentWindow().on('hide', updateWindowState);
-	getCurrentWindow().on('show', updateWindowState);
+	getCurrentWindow().on('hide', update);
+	getCurrentWindow().on('show', update);
 
 	touchBar.on('format', (buttonId) => {
 		const legacyButtonIconClass = {
@@ -505,7 +502,7 @@ export default async () => {
 	});
 
 	webviews.on('ipc-message-unread-changed', (webview, { url: serverUrl }, badge) => {
-		if (typeof badge === 'number' && preferences.get('showWindowOnUnreadChanged')) {
+		if (typeof badge === 'number' && __showWindowOnUnreadChanged) {
 			const mainWindow = remote.getCurrentWindow();
 			mainWindow.showInactive();
 		}
@@ -521,8 +518,8 @@ export default async () => {
 		servers.setActive(serverUrl);
 	});
 
-	webviews.on('ipc-message-sidebar-style', (webview, { url: serverUrl }, style) => {
-		servers.set(serverUrl, { style });
+	webviews.on('ipc-message-sidebar-style', (webview, { url }, style) => {
+		store.dispatch(setServerSidebarStyle(url, style));
 	});
 
 	webviews.on('ipc-message-get-sourceId', (webview, { url: serverUrl }) => {
@@ -546,7 +543,7 @@ export default async () => {
 	});
 
 	webviews.on('ready', () => {
-		stopLoading();
+		store.dispatch(stopLoading());
 	});
 
 	sidebar.mount();
@@ -558,9 +555,6 @@ export default async () => {
 	updateModal.mount();
 
 	await servers.initialize();
-	await preferences.initialize();
 
-	updatePreferences();
-	updateServers();
-	updateWindowState();
+	store.dispatch(loadPreferences(await preferences.load()));
 };

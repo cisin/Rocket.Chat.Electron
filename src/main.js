@@ -1,6 +1,7 @@
 import { app } from 'electron';
 import jetpack from 'fs-jetpack';
 import i18n from './i18n';
+import './store';
 import { deepLinks } from './main/deepLinks';
 import { mainWindow, createMainWindow } from './main/mainWindow';
 import { basicAuth } from './main/basicAuth';

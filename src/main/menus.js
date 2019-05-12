@@ -160,21 +160,21 @@ const createTemplate = ({
 				label: i18n.__('menus.showTrayIcon'),
 				type: 'checkbox',
 				checked: showTrayIcon,
-				click: () => events.emit('toggle', 'showTrayIcon'),
+				click: ({ checked }) => events.emit('toggle', 'showTrayIcon', checked),
 			},
 			...(process.platform !== 'darwin' ? [
 				{
 					label: i18n.__('menus.showMenuBar'),
 					type: 'checkbox',
 					checked: showMenuBar,
-					click: () => events.emit('toggle', 'showMenuBar'),
+					click: ({ checked }) => events.emit('toggle', 'showMenuBar', checked),
 				},
 			] : []),
 			{
 				label: i18n.__('menus.showServerList'),
 				type: 'checkbox',
 				checked: showServerList,
-				click: () => events.emit('toggle', 'showServerList'),
+				click: ({ checked }) => events.emit('toggle', 'showServerList', checked),
 			},
 			{
 				type: 'separator',
@@ -236,7 +236,7 @@ const createTemplate = ({
 				label: i18n.__('menus.showOnUnreadMessage'),
 				type: 'checkbox',
 				checked: showWindowOnUnreadChanged,
-				click: () => events.emit('toggle', 'showWindowOnUnreadChanged'),
+				click: ({ checked }) => events.emit('toggle', 'showWindowOnUnreadChanged', checked),
 			},
 			{
 				type: 'separator',

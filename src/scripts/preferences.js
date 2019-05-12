@@ -1,37 +1,20 @@
-import { EventEmitter } from 'events';
+const persist = async (entries) => localStorage.setItem('preferences', JSON.stringify(entries));
 
-
-const initialState = {
-	showWindowOnUnreadChanged: false,
-	hasTrayIcon: process.platform !== 'linux',
-	hasMenuBar: true,
-	hasSidebar: true,
-};
-
-let entries = initialState;
-
-const events = new EventEmitter();
-
-const load = () => {
+const load = async () => {
+	let entries;
 	try {
-		return JSON.parse(localStorage.getItem('preferences')) || initialState;
+		entries = JSON.parse(localStorage.getItem('preferences')) || {};
 	} catch (error) {
-		return initialState;
+		entries = {};
 	}
-};
-
-const persist = () => localStorage.setItem('preferences', JSON.stringify(entries));
-
-const initialize = async () => {
-	entries = await load();
 
 	if (localStorage.getItem('hideTray')) {
-		entries.hasTrayIcon = localStorage.getItem('hideTray') !== 'true';
+		entries.hasTray = localStorage.getItem('hideTray') !== 'true';
 		localStorage.removeItem('hideTray');
 	}
 
 	if (localStorage.getItem('autohideMenu')) {
-		entries.hasMenuBar = localStorage.getItem('autohideMenu') !== 'true';
+		entries.hasMenus = localStorage.getItem('autohideMenu') !== 'true';
 		localStorage.removeItem('autohideMenu');
 	}
 
@@ -45,22 +28,12 @@ const initialize = async () => {
 		localStorage.removeItem('showWindowOnUnreadChanged');
 	}
 
-	await persist();
+	await persist(entries);
+
+	return entries;
 };
 
-const get = (name) => entries[name];
-
-const getAll = () => entries;
-
-const set = async (name, value) => {
-	entries[name] = value;
-	await persist();
-	events.emit('set', name, value);
+export const preferences = {
+	load,
+	persist,
 };
-
-export const preferences = Object.assign(events, {
-	initialize,
-	get,
-	getAll,
-	set,
-});
