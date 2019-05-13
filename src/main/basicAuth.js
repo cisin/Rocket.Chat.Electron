@@ -4,7 +4,7 @@ import url from 'url';
 
 const events = new EventEmitter();
 
-const requestLogin = async ({ request, authInfo }) => {
+const requestLogin = async ({ webContentsUrl, request, authInfo }) => {
 	const { auth } = url.parse(request.url);
 
 	if (auth) {
@@ -12,11 +12,17 @@ const requestLogin = async ({ request, authInfo }) => {
 		return { username, password };
 	}
 
-	return await new Promise((callback) => events.emit('login-requested', { request, authInfo, callback }));
+	return await new Promise((callback) => events.emit('login-requested', {
+		webContentsUrl,
+		request,
+		authInfo,
+		callback,
+	}));
 };
 
 const handleLoginEvent = async (event, webContents, request, authInfo, callback) => {
-	const credentials = await requestLogin({ request, authInfo });
+
+	const credentials = await requestLogin({ webContentsUrl: webContents.getURL(), request, authInfo });
 
 	if (!credentials) {
 		return;

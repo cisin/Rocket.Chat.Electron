@@ -7,8 +7,9 @@ import { getTrayIconImage } from './icon';
 let state = {
 	badge: null,
 	isMainWindowVisible: true,
-	showIcon: false,
+	visible: false,
 };
+
 const events = new EventEmitter();
 
 let trayIcon = null;
@@ -77,7 +78,7 @@ const destroyIcon = () => {
 };
 
 const update = () => {
-	if (!state.showIcon) {
+	if (!state.visible) {
 		destroyIcon();
 		return;
 	}

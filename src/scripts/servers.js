@@ -13,15 +13,12 @@ const has = (serverUrl) => entries.some(({ url }) => url === serverUrl);
 
 const get = (serverUrl) => entries.find(({ url }) => url === serverUrl);
 
-const fromUrl = (serverUrl) => entries.find(({ url }) => serverUrl.indexOf(url) === 0);
-
 const getAll = () => entries;
 
 const setActive = (serverUrl) => {
 	for (const entry of entries) {
 		entry.active = entry.url === serverUrl;
 	}
-	config.set('servers', entries);
 
 	const activatedServer = entries.find(({ active }) => active);
 	activatedServer ? events.emit('active-setted', activatedServer) : events.emit('active-cleared');
@@ -39,7 +36,6 @@ const set = (serverUrl, { url, active, ...entry }) => {
 		...entries[index],
 		...entry,
 	};
-	config.set('servers', entries);
 
 	if (isTitleChanging) {
 		events.emit('title-setted', entries[index]);
@@ -72,7 +68,6 @@ const add = (serverUrl) => {
 	entry.title = entry.url;
 
 	entries.push(entry);
-	config.set('servers', entries);
 
 	events.emit('added', entry);
 };
@@ -85,7 +80,6 @@ const remove = (serverUrl) => {
 
 	const entry = entries[index];
 	entries.splice(index, 1);
-	config.set('servers', entries);
 
 	if (!entries.some(({ active }) => active)) {
 		const activatedServer = entries.find(({ active }) => active);
@@ -97,7 +91,6 @@ const remove = (serverUrl) => {
 
 const sort = (urls) => {
 	entries = entries.sort(({ url: a }, { url: b }) => urls.indexOf(a) - urls.indexOf(b));
-	config.set('servers', entries);
 
 	events.emit('sorted');
 };
@@ -203,7 +196,6 @@ const migrateFromDefaults = async () => {
 const initialize = async () => {
 	if (localStorage.getItem('rocket.chat.hosts')) {
 		await migrateFromLocalStorage();
-		config.set('servers', entries);
 		events.emit('loaded', entries);
 		return;
 	}
@@ -212,7 +204,6 @@ const initialize = async () => {
 
 	if (entries.length === 0) {
 		await migrateFromDefaults();
-		config.set('servers', entries);
 		events.emit('loaded', entries, true);
 		return;
 	}
@@ -257,7 +248,6 @@ export const servers = Object.assign(events, {
 	initialize,
 	has,
 	get,
-	fromUrl,
 	getAll,
 	setActive,
 	set,

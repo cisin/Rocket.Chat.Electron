@@ -6,8 +6,9 @@ import { getTrayIconImage, getAppIconImage } from './icon';
 
 let state = {
 	badge: null,
-	hasTrayIcon: false,
+	hasTray: false,
 };
+
 const events = new EventEmitter();
 
 const getBadgeText = ({ badge }) => {
@@ -33,7 +34,8 @@ const update = async (previousState = {}) => {
 	}
 
 	if (process.platform === 'linux' || process.platform === 'win32') {
-		const image = state.hasTrayIcon ? getAppIconImage() : getTrayIconImage({ badge: state.badge });
+		const { hasTray } = state;
+		const image = hasTray ? getAppIconImage() : getTrayIconImage({ badge: state.badge });
 		mainWindow.setIcon(image);
 	}
 

@@ -63,9 +63,9 @@ const handleClose = async (event) => {
 	});
 	mainWindow.blur();
 
-	const { hasTrayIcon } = mainWindow;
+	const { hideOnClose } = mainWindow;
 
-	if (!hasTrayIcon) {
+	if (!hideOnClose) {
 		fetchState();
 	}
 
@@ -76,7 +76,7 @@ const handleClose = async (event) => {
 		}
 
 		case 'linux': {
-			if (hasTrayIcon) {
+			if (hideOnClose) {
 				mainWindow.hide();
 			} else {
 				mainWindow.destroy();
@@ -85,7 +85,7 @@ const handleClose = async (event) => {
 		}
 
 		case 'win32': {
-			if (hasTrayIcon) {
+			if (hideOnClose) {
 				mainWindow.hide();
 			} else {
 				mainWindow.minimize();
@@ -94,7 +94,7 @@ const handleClose = async (event) => {
 		}
 	}
 
-	if (hasTrayIcon) {
+	if (hideOnClose) {
 		fetchState();
 	}
 };
@@ -110,7 +110,7 @@ const forceFocus = () => {
 };
 
 const showIfNeeded = () => {
-	const { hasTrayIcon } = mainWindow;
+	const { hideOnClose } = mainWindow;
 	const { isMaximized, isMinimized, isHidden } = state;
 
 	if (isMaximized) {
@@ -121,7 +121,7 @@ const showIfNeeded = () => {
 		mainWindow.minimize();
 	}
 
-	if (hasTrayIcon) {
+	if (hideOnClose) {
 		isHidden ? mainWindow.hide() : mainWindow.show();
 		return;
 	}
@@ -172,7 +172,7 @@ export const createMainWindow = async () => {
 	mainWindow.on('focus', handleFocus);
 	mainWindow.on('close', handleClose);
 
-	mainWindow.hasTrayIcon = false;
+	mainWindow.hideOnClose = false;
 	mainWindow.forceFocus = forceFocus;
 	mainWindow.showIfNeeded = showIfNeeded;
 

@@ -1,27 +1,28 @@
 import { app, Menu } from 'electron';
 import { EventEmitter } from 'events';
-import { mainWindow } from './mainWindow';
 import i18n from '../i18n';
+import { mainWindow } from './mainWindow';
 
 
 let state = {};
+
 const events = new EventEmitter();
 
 const createTemplate = ({
 	appName,
 	servers = [],
-	showTrayIcon = true,
-	showMenuBar = true,
-	showServerList = true,
-	showWindowOnUnreadChanged = false,
-	canUndo = true,
-	canRedo = true,
-	canCut = true,
-	canCopy = true,
-	canPaste = true,
-	canSelectAll = true,
-	canGoBack = true,
-	canGoForward = true,
+	hasTray,
+	hasMenus,
+	hasSidebar,
+	showWindowOnUnreadChanged,
+	canUndo,
+	canRedo,
+	canCut,
+	canCopy,
+	canPaste,
+	canSelectAll,
+	canGoBack,
+	canGoForward,
 }) => ([
 	{
 		label: process.platform === 'darwin' ? appName : i18n.__('menus.fileMenu'),
@@ -159,22 +160,22 @@ const createTemplate = ({
 			{
 				label: i18n.__('menus.showTrayIcon'),
 				type: 'checkbox',
-				checked: showTrayIcon,
-				click: () => events.emit('toggle', 'showTrayIcon'),
+				checked: hasTray,
+				click: ({ checked }) => events.emit('toggle', 'hasTray', checked),
 			},
 			...(process.platform !== 'darwin' ? [
 				{
 					label: i18n.__('menus.showMenuBar'),
 					type: 'checkbox',
-					checked: showMenuBar,
-					click: () => events.emit('toggle', 'showMenuBar'),
+					checked: hasMenus,
+					click: ({ checked }) => events.emit('toggle', 'hasMenus', checked),
 				},
 			] : []),
 			{
 				label: i18n.__('menus.showServerList'),
 				type: 'checkbox',
-				checked: showServerList,
-				click: () => events.emit('toggle', 'showServerList'),
+				checked: hasSidebar,
+				click: ({ checked }) => events.emit('toggle', 'hasSidebar', checked),
 			},
 			{
 				type: 'separator',
@@ -236,7 +237,7 @@ const createTemplate = ({
 				label: i18n.__('menus.showOnUnreadMessage'),
 				type: 'checkbox',
 				checked: showWindowOnUnreadChanged,
-				click: () => events.emit('toggle', 'showWindowOnUnreadChanged'),
+				click: ({ checked }) => events.emit('toggle', 'showWindowOnUnreadChanged', checked),
 			},
 			{
 				type: 'separator',
@@ -302,9 +303,9 @@ const update = () => {
 	Menu.setApplicationMenu(menu);
 
 	if (process.platform !== 'darwin') {
-		const { showMenuBar } = state;
-		mainWindow.setAutoHideMenuBar(!showMenuBar);
-		mainWindow.setMenuBarVisibility(!!showMenuBar);
+		const { hasMenus } = state;
+		mainWindow.setAutoHideMenuBar(!hasMenus);
+		mainWindow.setMenuBarVisibility(!!hasMenus);
 	}
 };
 

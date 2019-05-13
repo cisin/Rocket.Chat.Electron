@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@paulcbetts/system-idle-time": "^1.0.4",
+    "electron-redux": "^1.4.0",
     "electron-store": "^3.2.0",
     "electron-updater": "^4.0.6",
     "fs-jetpack": "^2.2.0",
@@ -35,6 +36,7 @@
     "i18next-node-fs-backend": "^2.1.1",
     "i18next-sync-fs-backend": "^1.1.0",
     "mem": "^4.1.0",
+    "redux": "^4.0.1",
     "spellchecker": "^3.5.0"
   },
   "devDependencies": {

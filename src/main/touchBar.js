@@ -15,6 +15,7 @@ const {
 let state = {
 	servers: [],
 };
+
 const events = new EventEmitter();
 
 let isUsingSegmentedControl;
@@ -109,7 +110,17 @@ const mount = () => {
 	update();
 };
 
+const unmount = () => {
+	if (process.platform !== 'darwin') {
+		return;
+	}
+
+	events.removeAllListeners();
+	mainWindow.setTouchBar(null);
+};
+
 export const touchBar = Object.assign(events, {
 	mount,
 	setState,
+	unmount,
 });

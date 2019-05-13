@@ -9,6 +9,7 @@ const events = new EventEmitter();
 const createSpellCheckingMenuTemplate = ({
 	corrections = [],
 	dictionaries = [],
+	multipleDictionaries,
 	isEditable,
 }) => {
 	if (!isEditable) {
@@ -49,9 +50,9 @@ const createSpellCheckingMenuTemplate = ({
 			submenu: [
 				...dictionaries.map(({ dictionary, enabled }) => ({
 					label: dictionary,
-					type: 'checkbox',
+					type: multipleDictionaries ? 'checkbox' : 'radio',
 					checked: enabled,
-					click: ({ checked }) => events.emit('toggle-dictionary', name, checked),
+					click: ({ checked }) => events.emit('toggle-dictionary', dictionary, checked),
 				})),
 				{
 					type: 'separator',

@@ -1,6 +1,11 @@
 import { remote, clipboard } from 'electron';
 import i18n from '../i18n';
 import * as channels from '../preload/channels';
+import { store } from '../store';
+import { stopLoading } from '../store/loading';
+import { loadPreferences, setPreferences } from '../store/preferences';
+import { loadServers } from '../store/servers';
+import { showWindow, hideWindow } from '../store/windowVisible';
 import { queryEditFlags } from '../utils';
 import { aboutModal } from './aboutModal';
 import { screenshareModal } from './screenshareModal';
@@ -15,6 +20,7 @@ const { app, dialog, getCurrentWindow, shell } = remote;
 const {
 	basicAuth,
 	certificates,
+	config,
 	deepLinks,
 	dock,
 	menus,
@@ -24,82 +30,6 @@ const {
 	tray,
 	updates,
 } = remote.require('./main');
-
-
-let loading = true;
-
-const updatePreferences = () => {
-	const {
-		hasTrayIcon,
-		hasMenuBar,
-		hasSidebar,
-		showWindowOnUnreadChanged,
-		spellchecking: {
-			enabledDictionaries = [],
-		} = {},
-	} = preferences.getAll();
-
-	menus.setState({
-		showTrayIcon: hasTrayIcon,
-		showWindowOnUnreadChanged,
-		showMenuBar: hasMenuBar,
-		showServerList: hasSidebar,
-	});
-
-	tray.setState({
-		showIcon: hasTrayIcon,
-	});
-
-	dock.setState({
-		hasTrayIcon,
-	});
-
-	sidebar.setState({
-		visible: !loading && hasSidebar,
-	});
-
-	spellchecking.setEnabledDictionaries(...enabledDictionaries);
-
-	webviews.setState({
-		hasSidebar,
-	});
-
-	getCurrentWindow().hasTrayIcon = hasTrayIcon;
-};
-
-
-const updateServers = () => {
-	const allServers = servers.getAll();
-
-	menus.setState({ servers: allServers });
-	sidebar.setState({ servers: allServers });
-	touchBar.setState({ servers: allServers });
-	webviews.setState({ servers: allServers });
-
-	const badges = allServers.map(({ badge }) => badge);
-	const mentionCount = (
-		badges
-			.filter((badge) => Number.isInteger(badge))
-			.reduce((sum, count) => sum + count, 0)
-	);
-	const globalBadge = mentionCount || (badges.some((badge) => !!badge) && '•') || null;
-
-	tray.setState({ badge: globalBadge });
-	dock.setState({ badge: globalBadge });
-
-	landing.setState({ visible: !loading && !allServers.some(({ active }) => active) });
-};
-
-const updateWindowState = () => tray.setState({ isMainWindowVisible: getCurrentWindow().isVisible() });
-
-
-const stopLoading = () => {
-	loading = false;
-	document.querySelector('.loading').classList.remove('loading--visible');
-	updateServers();
-	updatePreferences();
-	updateWindowState();
-};
 
 
 const askWhenToInstallUpdate = () => new Promise((resolve) => {
@@ -179,9 +109,12 @@ const confirmAppDataReset = () => new Promise((resolve) => {
 const destroyAll = () => {
 	try {
 		menus.unmount();
-		tray.unmount();
 		dock.unmount();
-		spellchecking.removeAllListeners();
+		touchBar.unmount();
+		tray.unmount();
+		deepLinks.removeAllListeners();
+		basicAuth.removeAllListeners();
+		certificates.removeAllListeners();
 		updates.removeAllListeners();
 		getCurrentWindow().removeAllListeners();
 	} catch (error) {
@@ -223,18 +156,108 @@ const browseForDictionary = () => {
 	}, callback);
 };
 
+const update = () => {
+	const {
+		windowVisible,
+		loading,
+		preferences: {
+			hasTray,
+			hasMenus,
+			hasSidebar,
+			showWindowOnUnreadChanged,
+			enabledDictionaries,
+		},
+		servers,
+	} = store.getState();
+
+	const badges = servers.map(({ badge }) => badge);
+	const mentionCount = (
+		badges
+			.filter((badge) => Number.isInteger(badge))
+			.reduce((sum, count) => sum + count, 0)
+	);
+	const globalBadge = mentionCount || (badges.some((badge) => !!badge) && '•') || null;
+
+	const view = (
+		servers.find(({ active }) => active) ||
+		'landing'
+	);
+
+	getCurrentWindow().hideOnClose = hasTray;
+
+	document.querySelector('.loading').classList.toggle('loading--visible', loading);
+
+	dock.setState({
+		hasTray,
+		badge: globalBadge,
+	});
+
+	landing.setState({
+		visible: !loading && view === 'landing',
+	});
+
+	menus.setState({
+		hasTray,
+		hasMenus,
+		hasSidebar,
+		showWindowOnUnreadChanged,
+		servers,
+	});
+
+	sidebar.setState({
+		servers,
+		visible: !loading && hasSidebar,
+	});
+
+	spellchecking.setEnabledDictionaries(...enabledDictionaries);
+
+	touchBar.setState({
+		servers,
+	});
+
+	tray.setState({
+		badge: globalBadge,
+		isMainWindowVisible: windowVisible,
+		visible: hasTray,
+	});
+
+	webviews.setState({
+		hasSidebar,
+		servers,
+	});
+};
+
+const persistConfig = () => {
+	const {
+		preferences,
+		servers,
+		view,
+	} = store.getState();
+
+	config.set('preferences', preferences);
+	config.set('servers', servers);
+	config.set('view', view);
+};
+
 export default async () => {
 	await i18n.initialize();
+
+	store.subscribe(update);
+	store.subscribe(persistConfig);
+
+	getCurrentWindow().on('show', () => store.dispatch(showWindow()));
+	getCurrentWindow().on('hide', () => store.dispatch(hideWindow()));
 
 	window.addEventListener('beforeunload', destroyAll);
 
 	document.addEventListener('selectionchange', handleSelectionChangeEventListener);
 
 	aboutModal.on('check-for-updates', () => updates.checkForUpdates());
-	aboutModal.on('set-check-for-updates-on-start', (checked) => updates.setAutoUpdate(checked));
+	aboutModal.on('set-check-for-updates-on-start', (enabled) => updates.setAutoUpdate(enabled));
 
-	basicAuth.on('login-requested', ({ request: { url }, callback }) => {
-		const { username, password } = servers.fromUrl(url) || {};
+	basicAuth.on('login-requested', ({ webContentsUrl, callback }) => {
+		const { servers } = store.getState();
+		const { username, password } = servers.find(({ url }) => webContentsUrl.indexOf(url) === 0) || {};
 		callback((username && password) ? [username, password] : null);
 	});
 
@@ -244,7 +267,16 @@ export default async () => {
 	});
 
 	contextMenu.on('replace-misspelling', (correction) => getFocusedWebContents().replaceMisspelling(correction));
-	contextMenu.on('toggle-dictionary', (dictionary, enabled) => spellchecking.toggleDictionary(dictionary, enabled));
+	contextMenu.on('toggle-dictionary', (dictionary, enabled) => {
+		const { preferences: { enabledDictionaries } } = store.getState();
+		store.dispatch(setPreferences({
+			enabledDictionaries: spellchecking.filterDictionaries(
+				enabled ?
+					[dictionary, ...enabledDictionaries] :
+					enabledDictionaries.filter((_dictionary) => _dictionary !== dictionary)
+			),
+		}));
+	});
 	contextMenu.on('browse-for-dictionary', () => browseForDictionary());
 
 	contextMenu.on('save-image-as', (url) => getFocusedWebContents().downloadURL(url)),
@@ -263,7 +295,9 @@ export default async () => {
 	deepLinks.on('auth', async ({ serverUrl }) => {
 		getCurrentWindow().forceFocus();
 
-		if (servers.has(serverUrl)) {
+		const { servers } = store.getState();
+
+		if (servers.findIndex(({ url }) => url === serverUrl) > -1) {
 			servers.setActive(serverUrl);
 			return;
 		}
@@ -351,34 +385,28 @@ export default async () => {
 		}
 	});
 
-	menus.on('toggle', (property) => {
+	menus.on('toggle', (property, value) => {
 		switch (property) {
-			case 'showTrayIcon': {
-				preferences.set('hasTrayIcon', !preferences.get('hasTrayIcon'));
+			case 'hasTray': {
+				store.dispatch(setPreferences({ hasTray: value }));
 				break;
 			}
 
-			case 'showMenuBar': {
-				preferences.set('hasMenuBar', !preferences.get('hasMenuBar'));
+			case 'hasMenus': {
+				store.dispatch(setPreferences({ hasMenus: value }));
 				break;
 			}
 
-			case 'showServerList': {
-				preferences.set('hasSidebar', !preferences.get('hasSidebar'));
+			case 'hasSidebar': {
+				store.dispatch(setPreferences({ hasSidebar: value }));
 				break;
 			}
 
 			case 'showWindowOnUnreadChanged': {
-				preferences.set('showWindowOnUnreadChanged', !preferences.get('showWindowOnUnreadChanged'));
+				store.dispatch(setPreferences({ showWindowOnUnreadChanged: value }));
 				break;
 			}
 		}
-
-		updatePreferences();
-	});
-
-	preferences.on('set', () => {
-		updatePreferences();
 	});
 
 	screenshareModal.on('select-source', ({ id, url }) => {
@@ -389,38 +417,38 @@ export default async () => {
 	servers.on('loaded', (entries, fromDefaults) => {
 		if (fromDefaults) {
 			if (Object.keys(entries).length <= 1) {
-				preferences.set('hasSidebar', false);
+				store.dispatch(setPreferences({ hasSidebar: false }));
 			}
 		}
-		updateServers();
+		store.dispatch(loadServers(entries));
 	});
 
 	servers.on('added', (/* entry */) => {
-		updateServers();
+		store.dispatch(loadServers(servers.getAll()));
 	});
 
 	servers.on('removed', (/* entry */) => {
-		updateServers();
+		store.dispatch(loadServers(servers.getAll()));
 	});
 
 	servers.on('updated', (/* entry */) => {
-		updateServers();
+		store.dispatch(loadServers(servers.getAll()));
 	});
 
 	servers.on('sorted', () => {
-		updateServers();
+		store.dispatch(loadServers(servers.getAll()));
 	});
 
 	servers.on('active-setted', (/* entry */) => {
-		updateServers();
+		store.dispatch(loadServers(servers.getAll()));
 	});
 
 	servers.on('active-cleared', () => {
-		updateServers();
+		store.dispatch(loadServers(servers.getAll()));
 	});
 
 	servers.on('title-setted', () => {
-		updateServers();
+		store.dispatch(loadServers(servers.getAll()));
 	});
 
 	sidebar.on('select-server', (url) => {
@@ -446,9 +474,6 @@ export default async () => {
 	sidebar.on('servers-sorted', (urls) => {
 		servers.sort(urls);
 	});
-
-	getCurrentWindow().on('hide', updateWindowState);
-	getCurrentWindow().on('show', updateWindowState);
 
 	touchBar.on('format', (buttonId) => {
 		webviews.format({ active: true }, buttonId);
@@ -521,7 +546,8 @@ export default async () => {
 	});
 
 	webviews.on(channels.badgeChanged, (url, badge) => {
-		if (typeof badge === 'number' && preferences.get('showWindowOnUnreadChanged')) {
+		const { preferences: { showWindowOnUnreadChanged } } = store.getState();
+		if (typeof badge === 'number' && showWindowOnUnreadChanged) {
 			const mainWindow = remote.getCurrentWindow();
 			mainWindow.showInactive();
 		}
@@ -558,17 +584,21 @@ export default async () => {
 	});
 
 	webviews.on(channels.triggerContextMenu, (url, params) => {
+		const {
+			preferences: {
+				enabledDictionaries,
+			},
+		} = store.getState();
 		const { selectionText } = params;
-
 		const corrections = spellchecking.getCorrections(selectionText);
 		const availableDictionaries = spellchecking.getAvailableDictionaries();
-		const enabledDictionaries = spellchecking.getEnabledDictionaries();
 		const dictionaries = availableDictionaries.map((dictionary) => ({
 			dictionary,
 			enabled: enabledDictionaries.includes(dictionary),
 		}));
+		const multipleDictionaries = spellchecking.supportsMultipleDictionaries();
 
-		contextMenu.trigger({ ...params, corrections, dictionaries });
+		contextMenu.trigger({ ...params, corrections, dictionaries, multipleDictionaries });
 	});
 
 	webviews.on('did-navigate', (url, lastPath) => {
@@ -580,7 +610,7 @@ export default async () => {
 	});
 
 	webviews.on('ready', () => {
-		stopLoading();
+		store.dispatch(stopLoading());
 	});
 
 	sidebar.mount();
@@ -592,9 +622,7 @@ export default async () => {
 	updateModal.mount();
 
 	await servers.initialize();
-	await preferences.initialize();
 
-	updatePreferences();
-	updateServers();
-	updateWindowState();
+	store.dispatch(loadPreferences(preferences.load()));
+	store.dispatch(loadServers(servers.getAll()));
 };

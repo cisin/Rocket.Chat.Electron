@@ -1,4 +1,3 @@
-import { EventEmitter } from 'events';
 import jetpack from 'fs-jetpack';
 import mem from 'mem';
 import path from 'path';
@@ -6,15 +5,13 @@ import spellchecker from 'spellchecker';
 import { getDirectory } from '../utils';
 
 
-const events = new EventEmitter();
-
-let isMultiLanguage = false;
+let supportsMultipleDictionaries = false;
 let dictionaryInstallationDirectory;
 let availableDictionaries = [];
 let enabledDictionaries = [];
 let checker = () => true;
 
-const filterDictionaries = (dictionaries) => (
+const filterDictionaries = (dictionaries) => Array.from(new Set(
 	dictionaries
 		.flatMap((dictionary) => {
 			const matches = /^(\w+?)[-_](\w+)$/.exec(dictionary);
@@ -23,7 +20,7 @@ const filterDictionaries = (dictionaries) => (
 				[dictionary];
 		})
 		.filter((dictionary) => availableDictionaries.includes(dictionary))
-);
+)).slice(...supportsMultipleDictionaries ? [] : [0, 1]);
 
 const updateChecker = () => {
 	if (enabledDictionaries.length === 0) {
@@ -90,43 +87,15 @@ const installDictionaries = async (filePaths) => {
 	}
 };
 
-const getDictionaryInstallationDirectory = () => dictionaryInstallationDirectory;
-
-const getAvailableDictionaries = () => availableDictionaries;
-
-const getEnabledDictionaries = () => enabledDictionaries;
 
 const setEnabledDictionaries = (...dictionaries) => {
-	dictionaries = filterDictionaries(dictionaries);
-	enabledDictionaries = isMultiLanguage ? dictionaries : dictionaries.slice(0, 1);
+	enabledDictionaries = filterDictionaries(dictionaries);
 	updateChecker();
-	events.emit('dictionaries-set', enabledDictionaries);
-};
-
-const toggleDictionary = (dictionary, enabled) => {
-	const dictionaries = filterDictionaries([dictionary]);
-
-	for (const dictionary of dictionaries) {
-		const alreadyEnabled = enabledDictionaries.includes(dictionary);
-
-		if (enabled && !alreadyEnabled) {
-			enabledDictionaries = isMultiLanguage ? [...enabledDictionaries, dictionary] : [dictionary];
-			break;
-		}
-
-		if (!enabled && alreadyEnabled) {
-			enabledDictionaries = enabledDictionaries.filter((enabledDictionary) => enabledDictionary !== dictionary);
-			break;
-		}
-	}
-
-	updateChecker();
-	events.emit('dictionaries-set', enabledDictionaries);
 };
 
 const initialize = async () => {
 	const embeddedDictionaries = spellchecker.getAvailableDictionaries();
-	isMultiLanguage = embeddedDictionaries.length > 0 && process.platform !== 'win32';
+	supportsMultipleDictionaries = embeddedDictionaries.length > 0 && process.platform !== 'win32';
 
 	const directory = getDirectory('dictionaries', 'app');
 	dictionaryInstallationDirectory = directory.path();
@@ -137,14 +106,15 @@ const initialize = async () => {
 	availableDictionaries = Array.from(new Set([...embeddedDictionaries, ...installedDictionaries])).sort();
 };
 
-export const spellchecking = Object.assign(events, {
+export const spellchecking = {
 	initialize,
 	check,
+	filterDictionaries,
 	getCorrections,
-	getDictionaryInstallationDirectory,
-	getAvailableDictionaries,
-	getEnabledDictionaries,
 	setEnabledDictionaries,
-	toggleDictionary,
 	installDictionaries,
-});
+	getDictionaryInstallationDirectory: () => dictionaryInstallationDirectory,
+	getAvailableDictionaries: () => availableDictionaries,
+	getEnabledDictionaries: () => enabledDictionaries,
+	supportsMultipleDictionaries: () => supportsMultipleDictionaries,
+};
